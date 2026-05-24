@@ -1,3 +1,4 @@
+# pylint:disable=W1203
 #!/usr/bin/env python3
 """CLI + daemon control for LCT water coolers — no GUI required.
 
@@ -11,16 +12,18 @@ Usage:
     python3 watercooler.py daemon [-a ADDRESS] [--interval 5]
 """
 
-import os
-import sys
-import json
-import signal
-import asyncio
 import argparse
+import asyncio
+import json
 import logging
+import os
+import signal
+import sys
+import traceback
 from enum import IntEnum
-from typing import Optional
-from bleak import BleakScanner, BleakClient
+from typing import Any
+
+from bleak import BleakClient, BleakScanner
 
 log = logging.getLogger("watercooler")
 
@@ -34,6 +37,7 @@ class RGBState(IntEnum):
     BREATHE_COLOR = 0x03
 
 class PumpVoltage(IntEnum):
+    OFF = 0xFE
     V11 = 0x00
     V12 = 0x01
     V7 = 0x02
@@ -55,8 +59,8 @@ DEVICE_NAMES = ['lct21001', 'lct22002']
 
 class WaterCoolingDevice:
     def __init__(self):
-        self.client: Optional[BleakClient] = None
-        self.model: Optional[str] = None
+        self.client: BleakClient | None = None
+        self.model: str | None = None
 
     async def scan(self):
         devices = await BleakScanner.discover(return_adv=True)
@@ -127,10 +131,10 @@ def read_cpu_temp():
         try:
             type_path = os.path.join(thermal_base, entry, "type")
             temp_path = os.path.join(thermal_base, entry, "temp")
-            with open(type_path) as f:
+            with open(type_path, "r", encoding='utf-8') as f:
                 zone_type = f.read().strip().lower()
             # prefer CPU/package zones, but collect all
-            with open(temp_path) as f:
+            with open(temp_path, "r", encoding='utf-8') as f:
                 t = int(f.read().strip()) / 1000.0
                 if t > 0:
                     temps.append((zone_type, t))
@@ -150,16 +154,19 @@ def read_cpu_temp():
 # === Auto speed profile ===
 
 # (max_temp, fan_speed, pump_voltage)
-DEFAULT_PROFILE = [
+DEFAULT_PROFILE = (
     (55,  25, PumpVoltage.V7),
     (70,  50, PumpVoltage.V8),
     (85,  75, PumpVoltage.V11),
     (999, 90, PumpVoltage.V11),
-]
+)
 
-def get_tier_for_temp(temp, profile=DEFAULT_PROFILE):
+VOLTAGE_MAP = {"7": PumpVoltage.V7, "8": PumpVoltage.V8, "11": PumpVoltage.V11, "12": PumpVoltage.V12, "0": PumpVoltage.OFF}
+
+def get_tier_for_temp(temp, profile=DEFAULT_PROFILE) -> tuple[int, PumpVoltage]:
     for max_temp, fan, pump in profile:
         if temp < max_temp:
+            if isinstance(pump, str): pump = VOLTAGE_MAP[pump]
             return fan, pump
     return profile[-1][1], profile[-1][2]
 
@@ -169,13 +176,14 @@ def get_tier_for_temp(temp, profile=DEFAULT_PROFILE):
 CONF_DIR = os.environ.get("WATERCOOLER_CONF_DIR", "/opt/watercooler")
 RGB_CONF = os.path.join(CONF_DIR, "rgb.conf")
 SPEED_CONF = os.path.join(CONF_DIR, "speed.conf")
+CURVE_CONF = os.path.join(CONF_DIR, "curve.conf")
 
 DEFAULT_RGB_CONF = {
     "mode": "static",
     "hex": "#00ffff",
 }
 
-DEFAULT_SPEED_CONF = {
+DEFAULT_SPEED_CONF: dict = {
     "mode": "auto",  # auto | max | manual
 }
 
@@ -186,7 +194,7 @@ MAX_PUMP = PumpVoltage.V12
 def read_rgb_conf():
     """Read RGB config. Returns dict with 'mode' and optionally 'hex'."""
     try:
-        with open(RGB_CONF) as f:
+        with open(RGB_CONF, "r", encoding='utf-8') as f:
             return json.loads(f.read())
     except (IOError, json.JSONDecodeError):
         return DEFAULT_RGB_CONF.copy()
@@ -194,7 +202,7 @@ def read_rgb_conf():
 def write_rgb_conf(conf):
     """Write RGB config file."""
     os.makedirs(os.path.dirname(RGB_CONF), exist_ok=True)
-    with open(RGB_CONF, "w") as f:
+    with open(RGB_CONF, "w", encoding='utf-8') as f:
         json.dump(conf, f, indent=2)
         f.write("\n")
 
@@ -205,20 +213,26 @@ def conf_mtime(path):
     except OSError:
         return 0
 
-def read_speed_conf():
+def read_speed_conf() -> dict:
     """Read speed config. Returns dict with 'mode' and optionally 'fan'/'voltage'."""
     try:
-        with open(SPEED_CONF) as f:
-            return json.loads(f.read())
-    except (IOError, json.JSONDecodeError):
+        with open(SPEED_CONF, "r", encoding='utf-8') as f:
+            return json.load(f)
+    except (IOError, json.JSONDecodeError) as e:
+        tb = ''.join(traceback.format_exception(e))
+        log.error("Failed to load speed config:\n%s", tb)
         return DEFAULT_SPEED_CONF.copy()
 
 def write_speed_conf(conf):
     """Write speed config file."""
     os.makedirs(CONF_DIR, exist_ok=True)
-    with open(SPEED_CONF, "w") as f:
+    with open(SPEED_CONF, "w", encoding='utf-8') as f:
         json.dump(conf, f, indent=2)
         f.write("\n")
+
+def read_curve_conf() -> list[list]:
+    with open(CURVE_CONF, "r", encoding='utf-8') as f:
+        return json.load(f)
 
 def apply_rgb_conf(dev, conf):
     """Apply RGB config to device. Returns coroutine."""
@@ -269,13 +283,15 @@ async def daemon_loop(address, interval, retries):
                 await dev.connect(target)
                 log.info("Connected.")
                 # Apply RGB from config on connect
-                try:
-                    conf = read_rgb_conf()
-                    await apply_rgb_conf(dev, conf)
-                    last_rgb_mtime = rgb_conf_mtime()
-                    log.info(f"RGB set from config: {conf}")
-                except Exception:
-                    pass
+                # rgb_conf_mtime is not defined everywhere
+                # idk what its supposed to be
+                # try:
+                #     conf = read_rgb_conf()
+                #     await apply_rgb_conf(dev, conf)
+                #     last_rgb_mtime = rgb_conf_mtime()
+                #     log.info(f"RGB set from config: {conf}")
+                # except Exception:
+                #     pass
                 current_fan = None
                 current_pump = None
             except Exception as e:
@@ -317,21 +333,34 @@ async def daemon_loop(address, interval, retries):
                 log.warning("Could not read CPU temp")
                 await asyncio.sleep(interval)
                 continue
-            fan, pump = get_tier_for_temp(temp)
+            try:
+                curve = read_curve_conf()
+            except Exception as e:
+                tb = ''.join(traceback.format_exception(e))
+                log.error(f"Failed to read curve.conf:\n{tb}")
+                curve = DEFAULT_PROFILE
+            fan, pump = get_tier_for_temp(temp, profile=curve)
 
         # Only send commands when values change
         try:
             if fan != current_fan:
-                await dev.fan_on(fan)
+                if fan == 0:
+                    await dev.fan_off()
+                else:
+                    await dev.fan_on(fan)
                 log.info(f"Fan: {fan}% (mode={speed_mode})")
                 current_fan = fan
             if pump != current_pump:
-                await dev.pump_on(pump)
+                if pump == PumpVoltage.OFF:
+                    await dev.pump_off()
+                else:
+                    await dev.pump_on(pump)
                 pump_name = pump.name if hasattr(pump, 'name') else str(pump)
                 log.info(f"Pump: {pump_name} (mode={speed_mode})")
                 current_pump = pump
         except Exception as e:
-            log.error(f"BT write failed: {e}")
+            tb = ''.join(traceback.format_exception(e))
+            log.error(f"BT write failed: {tb}")
             try:
                 await dev.disconnect()
             except Exception:
@@ -346,7 +375,7 @@ async def daemon_loop(address, interval, retries):
 
 async def run_daemon(args):
     log.info("Starting watercooler daemon")
-    log.info(f"Profile: <55C=25%/7V, <70C=50%/8V, <85C=75%/11V, 85C+=90%/11V")
+    log.info("Profile: <55C=25%/7V, <70C=50%/8V, <85C=75%/11V, 85C+=90%/11V")
     log.info(f"Poll interval: {args.interval}s")
 
     loop = asyncio.get_event_loop()
@@ -372,7 +401,6 @@ async def run_daemon(args):
 
 # === CLI one-shot commands ===
 
-VOLTAGE_MAP = {"7": PumpVoltage.V7, "8": PumpVoltage.V8, "11": PumpVoltage.V11, "12": PumpVoltage.V12}
 RGB_MODE_MAP = {"static": RGBState.STATIC, "breathe": RGBState.BREATHE, "rainbow": RGBState.COLORFUL, "breathe-rainbow": RGBState.BREATHE_COLOR}
 COLOR_MAP = {"red": (255, 0, 0), "green": (0, 255, 0), "blue": (0, 0, 255), "white": (255, 255, 255)}
 
@@ -487,7 +515,7 @@ def main():
 
     fan = sub.add_parser("fan", help="Control fan")
     fan.add_argument("--off", action="store_true", help="Turn fan off")
-    fan.add_argument("--speed", "-s", type=int, choices=[25, 50, 75, 90], default=50, help="Fan speed %%")
+    fan.add_argument("--speed", "-s", type=int, choices=[0, 25, 50, 75, 90], default=50, help="Fan speed %%")
 
     rgb = sub.add_parser("rgb", help="Control RGB")
     rgb.add_argument("--off", action="store_true", help="Turn RGB off")
@@ -498,7 +526,7 @@ def main():
     speed = sub.add_parser("speed", help="Set speed mode (daemon applies automatically)")
     speed.add_argument("--max", action="store_true", help="Maximum: fan 90%%, pump 12V")
     speed.add_argument("--auto", action="store_true", help="Auto: temp-based (default)")
-    speed.add_argument("--fan", type=int, choices=[25, 50, 75, 90], default=50, help="Manual fan speed %%")
+    speed.add_argument("--fan", type=int, choices=[0, 25, 50, 75, 90], default=50, help="Manual fan speed %%")
     speed.add_argument("--pump-voltage", type=str, choices=["7", "8", "11", "12"], default="8", help="Manual pump voltage")
 
     daemon = sub.add_parser("daemon", help="Run as daemon with auto fan/pump control")

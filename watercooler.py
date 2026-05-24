@@ -369,11 +369,10 @@ async def daemon_loop(address, interval, retries):
                     current_fan = fan
 
             # ----------------------------------- pump ----------------------------------- #
-            if pump != PumpVoltage.OFF:
-                pump_last_on = cur_time
+            if pump == PumpVoltage.OFF:
                 pump_last_on_request = None
             else:
-                pump_last_on_request = cur_time
+                pump_last_on = pump_last_on_request = cur_time
 
             if pump != current_pump:
 

@@ -371,6 +371,9 @@ async def daemon_loop(address, interval, retries):
             # ----------------------------------- pump ----------------------------------- #
             if pump != PumpVoltage.OFF:
                 pump_last_on = cur_time
+                pump_last_on_request = None
+            else:
+                pump_last_on_request = cur_time
 
             if pump != current_pump:
 
@@ -383,12 +386,11 @@ async def daemon_loop(address, interval, retries):
                         current_pump = pump
                     else:
                         log.info(f"Requested pump off, can turn off in {10 - (cur_time - pump_last_on)} sec.")
-                    pump_last_on_request = None
+
 
                 else:
 
                     if pump_last_on_request is None:
-                        pump_last_on_request = cur_time
                         logging.info("Requested pump on, can turn on in 5 sec.")
 
                     # activate pump off when another request happens 5 seconds after

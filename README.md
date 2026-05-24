@@ -1,95 +1,35 @@
-# Water Cooler CLI — Linux headless control for XMG Oasis
+Connect to XMG water cooler from linux. Should work with Yaoshi 16 Ultra X6AR55, Eluktronics Hydroc G2, XMG NEO 16 E25, Dream Machines RT50X0-16EU25, PCSPECIALIST 16" Recoil, Medion Erazer Beast 16 X1 Ultimate, TUXEDO Stellaris 16 - Gen7, UNIWILL ID* Series, CyberPower Tracer IX Edge Pro LC16 (they are all the same laptop)
 
-Control XMG Oasis 1 (LCT21001) and Oasis 2 (LCT22002) water coolers over Bluetooth from Linux — no GUI needed
+read original readme for more info https://github.com/anvme/watercooler-xmg-neo-linux
 
-Also compatible with: Eluktronics Liquid Pad Pro, PC Specialist Liquid Series, TUXEDO Aquaris.
+this is a rootless version that works on Bazzite and all packages are actually already included in Bazzite so you don't need any `rpm-ostree`.
 
-## Install
-
-```bash
-git clone https://github.com/anvme/watercooler-xmg-neo-linux
-cd watercooler-xmg-neo-linux
-sudo bash install.sh
-```
-
-The installer:
-- Detects your distro (Ubuntu/Debian, RHEL/AlmaLinux/Rocky/Fedora, Arch, openSUSE)
-- Installs system deps (python3, bluez, dbus)
-- Creates Python venv at `/opt/watercooler/`
-- Sets up systemd service + `watercooler` CLI wrapper
-
-## Quick start
+To install run `install-rootless.sh` instead of `install.sh`:
 
 ```bash
-# Enable auto-speed daemon on boot
-sudo systemctl enable --now watercooler
-
-# Set RGB color
-watercooler rgb --hex #00ffff --mode static
-
-# Max cooling
-watercooler speed --max
+git clone https://github.com/inikishev/watercooler-xmg-neo-linux-rootles
+cd watercooler-xmg-neo-linux-rootles
+sudo bash install-rootless.sh
 ```
 
-## Speed modes
-
-```bash
-watercooler speed --auto              # temp-based (default)
-watercooler speed --max               # fan 90%, pump 12V
-watercooler speed --fan 75 --pump-voltage 11  # manual
+Then to start and connect to the cooler
+```
+systemctl --user start watercooler
 ```
 
-Auto mode tiers:
-
-| CPU temp | Fan  | Pump |
-|----------|------|------|
-| < 55C    | 25%  | 7V   |
-| < 70C    | 50%  | 8V   |
-| < 85C    | 75%  | 11V  |
-| 85C+     | 90%  | 11V  |
-
-## RGB modes
-
-```bash
-watercooler rgb --hex #ff00aa --mode static
-watercooler rgb --hex #00ff00 --mode breathe
-watercooler rgb --mode rainbow
-watercooler rgb --mode breathe-rainbow
-watercooler rgb --off
+To start on login (I havent tested if this works)
+```
+systemctl --user enable watercooler
 ```
 
-## Other commands
-
-```bash
-watercooler scan          # find BT devices
-watercooler temp          # show CPU temp + what tier applies
-watercooler pump --voltage 8
-watercooler fan --speed 75
-watercooler reset
+see status:
+```
+systemctl --user status watercooler
 ```
 
-## Config files
-
-All configs in `/opt/watercooler/`. Daemon watches them — no restart needed.
-
-- `rgb.conf` — RGB color and mode
-- `speed.conf` — speed mode (auto/max/manual)
-
-## Web UI
-
-Open [https://anvme.github.io/watercooler-xmg-neo-linux/](https://anvme.github.io/watercooler-xmg-neo-linux/)   to pick RGB colors visually. Generates CLI commands you paste via SSH.
-
-## Logs
-
-```bash
-sudo journalctl -u watercooler -f
+view logs:
+```
+journalctl --user -u watercooler -f
 ```
 
-## Uninstall
-
-```bash
-sudo systemctl stop watercooler
-sudo systemctl disable watercooler
-sudo rm -rf /opt/watercooler /etc/systemd/system/watercooler.service /usr/local/bin/watercooler
-sudo systemctl daemon-reload
-```
+also this works on mechrevo cooler.

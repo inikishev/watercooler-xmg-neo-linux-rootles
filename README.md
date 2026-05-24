@@ -60,7 +60,7 @@ Here is a curve to have it off when idle (under 60C) and at low power under 80C,
 ]
 ```
 
-this is my current curve
+this is my current curve (im using ECO power plan so temps are always under 80 but it can still spike under some insane load)
 ```json
 [
     [60, 0, "0"],

@@ -372,7 +372,9 @@ async def daemon_loop(address, interval, retries):
             if pump == PumpVoltage.OFF:
                 pump_last_on_request = None
             else:
-                pump_last_on = pump_last_on_request = cur_time
+                pump_last_on = cur_time
+                if pump_last_on_request is None:
+                    pump_last_on_request = cur_time
 
             if pump != current_pump:
 

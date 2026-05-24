@@ -60,7 +60,16 @@ Here is a curve to have it off when idle (under 60C) and at low power under 80C,
 ]
 ```
 
-
+this is my current curve
+```json
+[
+    [60, 0, "0"],
+    [75, 30, "7"],
+    [80, 45, "8"],
+    [85, 60, "11"],
+    [999, 90, "12"]
+]
+```
 
 You can also edit `watercooler.py` in that folder if you want, and apply changes by saying this:
 ```bash

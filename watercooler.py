@@ -104,7 +104,7 @@ class WaterCoolingDevice:
         self.pump_level: Literal[0,1,2,3,4] = 0
         self.fan_speed: int = 0
         self.rgb_is_on = False
-        self.rgb_state: tuple[int, int, int, RGBState] = (0, 1, 1, RGBState.STATIC)
+        self.rgb_state: tuple[int, int, int, RGBState] = (0, 255, 255, RGBState.STATIC)
 
     async def scan(self) -> list[dict]:
         """Scan for devices matching `DEVICE_NAMES`."""

@@ -20,9 +20,9 @@ Every second (configurable) it reads temperatures of your laptop and sets fan an
 
 Note that the default profile is tuned for myself, and I use my laptop exclusively on ECO power plan (the green one), and I tuned it to be quiet and not annoy me, plus your hardware might be different, so you might need to tune it differently.
 
-Because the sound of pump turning on is quite loud, I also made it so that it doesn't quickly turn on and off during short temperature spikes. First, pump and fan are only allowed to turn on after 15 seconds of laptop being above temperature threshold, though 15 might be overkill so you can set it to 10 in the config. There is similar logic for turning them off. Secondly, a power level is only allowed to change once every 10 seconds (to avoid cycling it too quickly).
+Because the sound of pump turning on is quite loud, I also made it so that it doesn't quickly turn on and off during short temperature spikes. First, pump and fan are only allowed to turn on after more than 50% of the last 15 seconds are above temperature threshold (60C in default profile). There is similar logic for turning them off. Secondly, a power level is only allowed to change once every 10 seconds (to avoid cycling it too quickly).
 
-The logic is actually slightly more complex, all of how it works is explained in more detail in the comments in `config.jsonc` where you can also configure everything.
+All of how it works is explained in more detail in the comments in `config.jsonc` where you can also configure everything.
 
 It also is supposed to be able to control RBG. This part is just taken from watercooler-xmg-neo-linux and I've not tested it but it should work.
 
